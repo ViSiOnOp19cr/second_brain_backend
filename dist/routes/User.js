@@ -3,11 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.UserRouter = void 0;
 const express_1 = __importDefault(require("express"));
-const User_1 = require("./routes/User");
-const app = (0, express_1.default)();
-app.use(express_1.default.json());
-app.use("/", User_1.UserRouter);
-app.listen(3000, () => {
-    console.log("server running on port 3000");
+const UserController_1 = require("../controllers/UserController");
+exports.UserRouter = express_1.default.Router();
+exports.UserRouter.post("/signup", (req, res) => {
+    (0, UserController_1.SignUp)(req, res);
 });
