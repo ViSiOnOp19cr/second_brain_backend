@@ -2,6 +2,13 @@ import express,{Request,Response} from 'express';
 import { PrismaClient } from "../../generated/prisma";
 import {z} from 'zod'
 import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv'
+dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET;
+
+
 
 const prisma = new PrismaClient();
 
@@ -51,4 +58,53 @@ export const SignUp = async(req:Request,res:Response)=>{
     catch(e){
         return res.status(500).json({message:"something is fishy try again later."})
     }
+}
+
+export const Login =async(req:Request,res:Response)=>{
+    try{
+    const Loginvalidation = validation.safeParse(req.body);
+    if(!Loginvalidation.success){
+        return res.status(400).json({
+            message:"invalid input form"
+        })
+    }
+    const {username,password} = Loginvalidation.data;
+    if(!username || !password){
+        return res.status(400).json({error:"username and password are required"});
+    }
+    const user = await prisma.user.findUnique({
+        where:{
+            username:username
+        }
+    });
+    if(!user){
+        return res.status(400).json({
+            message:"username doesnt exist"
+        })
+    }
+    const hashedpassword = await bcrypt.compare(password,user.password);
+    if(!hashedpassword){
+        return res.status(400).json({
+            message:"invalid password"
+        })
+    }
+    if (!JWT_SECRET) {
+        throw new Error("JWT_SECRET is not defined in environment");
+    }
+    const token = jwt.sign(
+        {id:user.id},
+        JWT_SECRET,
+    )
+    return res.status(201).json({
+        message:"logged in successfully",
+        token:token
+    })
+
+}catch(error){
+    return res.status(500).json({
+        message:"somthing seems to be fishy"
+    })
+}
+    
+
 }

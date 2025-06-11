@@ -1,5 +1,5 @@
 import express from 'express'
-import {SignUp} from '../controllers/UserController'
+import {Login, SignUp} from '../controllers/UserController'
 
 import rateLimit from 'express-rate-limit';
 
@@ -15,4 +15,7 @@ UserRouter.use(limiter);
 UserRouter.post("/signup", (req,res) => { 
     SignUp(req,res);
 });
+UserRouter.post("/login",(req,res)=>{
+    Login(req,res);
+})
 
