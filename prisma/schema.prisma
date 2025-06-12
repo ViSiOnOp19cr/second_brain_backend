@@ -15,12 +15,12 @@ datasource db {
 }
 
 model User{
-  id       Int   @id @default(autoincrement())
+  id       Int   @unique @id @default(autoincrement())
   username     String   @unique
   password     String
   content      Content[]
   tags         Tags[]
-  links        Link[]
+  link         Link[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -29,8 +29,7 @@ model Content{
   id      Int      @id @default(autoincrement())
   title    String 
   type     String
-  link     Link?    @relation(fields:[linkId],references:[id],onDelete:Cascade)
-  linkId   Int?
+  link     String
   tags     ContentTags[]
   user     User   @relation(fields: [userId], references: [id])
   userId    Int
@@ -49,15 +48,13 @@ model Tags {
   id      Int      @id @default(autoincrement())
   title   String
   user     User   @relation(fields: [userId], references:[id])
-  userId    Int
+  userId    Int   
   content ContentTags[]
 }
-
-model Link {
-  id     Int      @id @default(autoincrement())
-  url    String
-  hash   String  @unique
-  user   User   @relation(fields: [userId], references: [id])
-  userId Int  
-  content   Content[]
+model Link{
+  id     Int     @id @default(autoincrement())
+  hash   String  @unique  
+  user   User    @relation(fields: [userId], references: [id])
+  userId Int     @unique
+  createdAt DateTime @default(now())
 }
