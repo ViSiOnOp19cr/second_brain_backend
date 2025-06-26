@@ -9,7 +9,7 @@ const UserController_1 = require("../controllers/UserController");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 200,
     message: "Too many requests from this IP, please try again after 15 minutes"
 });
 exports.UserRouter = express_1.default.Router();

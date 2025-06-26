@@ -37,7 +37,7 @@ const userMiddlewares = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
                 });
                 return;
             }
-            req.userId = decoded.id;
+            req.userId = parseInt(decoded.id);
             next();
         }
     }

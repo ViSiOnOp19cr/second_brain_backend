@@ -68,20 +68,34 @@ export const PostContent = async(req:CustomRequest,res:Response)=>{
 
 }
 export const getContent = async(req:CustomRequest,res:Response)=>{
+    const userId = req.userId;
+    if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+    
     const content = await prisma.content.findMany({
+        where: {
+            userId: userId
+        },
         include:{
             tags:{
                 include:{tag:true}
             }
+        },
+        orderBy: {
+            createdAt: 'desc'
         }
     });
+    
     const formatted = content.map((c) => ({
         id: c.id,
         title: c.title,
         type: c.type,
         link: c.link, 
-        tags: c.tags.map((t) => t.tag.title), 
+        tags: c.tags.map((t) => t.tag.title),
+        createdAt: c.createdAt
     }));
+    
     return res.status(200).json({
         message:"succesfully fetched the contents",
         formatted

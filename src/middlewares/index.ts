@@ -4,7 +4,7 @@ import dotenv from 'dotenv'
 dotenv.config();
 
 interface userRequest extends Request{
-    userId?:string
+    userId?:number
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -28,7 +28,7 @@ export const userMiddlewares = async(req:userRequest,res:Response,next:NextFunct
             });
             return;
         }
-        req.userId = decoded.id;
+        req.userId = parseInt(decoded.id);
         next();
     }
     }catch(e){

@@ -14,7 +14,12 @@ exports.Route.post('/content', middlewares_1.userMiddlewares, (req, res) => {
 exports.Route.get('/content', middlewares_1.userMiddlewares, (req, res) => {
     (0, ContentController_1.getContent)(req, res);
 });
-exports.Route.delete('/content', middlewares_1.userMiddlewares, (req, res) => {
+exports.Route.delete('/content/:id', middlewares_1.userMiddlewares, (req, res) => {
+    (0, ContentController_1.deleteContent)(req, res);
 });
 exports.Route.post('/sharebrain', middlewares_1.userMiddlewares, (req, res) => {
+    (0, ContentController_1.Sharebrain)(req, res);
+});
+exports.Route.get('./share/:hash', middlewares_1.userMiddlewares, (req, res) => {
+    (0, ContentController_1.getsharebrain)(req, res);
 });
