@@ -15,36 +15,53 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.userMiddlewares = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const errorHandler_1 = require("../utils/errorHandler");
 dotenv_1.default.config();
 const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error("WARNING: JWT_SECRET is not defined in environment variables!");
+}
+/**
+ * Authentication middleware to verify JWT tokens
+ */
 const userMiddlewares = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
+        // Check if token is provided
         const token = req.headers.authorization;
         if (!token) {
-            res.status(401).send({
-                message: 'unauthorized'
-            });
-            return;
+            return next(new errorHandler_1.AppError('Authentication required. Please provide a token', 401));
         }
+        // Check if JWT_SECRET is configured
         if (!JWT_SECRET) {
-            throw new Error("JWT_SECRET is not defined in environment");
+            return next(new errorHandler_1.AppError('Server configuration error', 500));
         }
-        const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
-        if (decoded) {
+        // Verify the token
+        try {
+            const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
+            // Token is valid but in wrong format
             if (typeof decoded === 'string') {
-                res.status(403).json({
-                    message: "Not logged in"
-                });
-                return;
+                return next(new errorHandler_1.AppError('Invalid token format', 401));
             }
-            req.userId = parseInt(decoded.id);
+            // Extract user ID from token
+            const decodedObj = decoded;
+            req.userId = parseInt(decodedObj.id);
             next();
         }
+        catch (tokenError) {
+            // Handle specific JWT errors
+            if (tokenError.name === 'TokenExpiredError') {
+                return next(new errorHandler_1.AppError('Token has expired. Please log in again', 401));
+            }
+            else if (tokenError.name === 'JsonWebTokenError') {
+                return next(new errorHandler_1.AppError('Invalid token. Please log in again', 401));
+            }
+            // For other token errors
+            return next(new errorHandler_1.AppError('Authentication failed', 401));
+        }
     }
-    catch (e) {
-        res.status(500).json({
-            message: "auth failed"
-        });
+    catch (error) {
+        // Unexpected errors
+        return next(new errorHandler_1.AppError('Authentication error', 500));
     }
 });
 exports.userMiddlewares = userMiddlewares;

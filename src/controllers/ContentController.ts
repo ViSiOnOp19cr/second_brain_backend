@@ -1,85 +1,98 @@
-import {Request,Response} from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from "../../generated/prisma";
-import { random } from '../utils'; 
+import { random } from '../utils';
+import { z } from 'zod'; 
+import { AppError, catchAsync } from '../utils/errorHandler';
 
 const prisma = new PrismaClient();
-interface CustomRequest extends Request{
-    userId?:number
+
+interface CustomRequest extends Request {
+    userId?: number;
 }
 
+// Validation schema for creating content
+const contentSchema = z.object({
+    title: z.string().min(1, "Title is required"),
+    type: z.string().min(1, "Type is required"),
+    link: z.string().url("Link must be a valid URL"),
+    tags: z.array(z.string()).min(1, "At least one tag is required")
+});
 
-export const PostContent = async(req:CustomRequest,res:Response)=>{
-    const { title, type, link, tags }: { title: string; type: string; link: string; tags: string[] } = req.body;
+// Create content controller
+export const PostContent = catchAsync(async (req: CustomRequest, res: Response, next: NextFunction) => {
     const userId = req.userId;
-
-    if (!userId) return res.status(401).json({ message: "Unauthorized" });
-    if (!title || !type || !link || !Array.isArray(tags)) {
-        return res.status(400).json({ message: "Invalid input" });
-    }
-    try{
-        
-        const tagRecords = await Promise.all(
-            tags.map(async(tagTitle)=>{
-                const existingTag = await prisma.tags.findFirst({
-                    where:{
-                        title:tagTitle,
-                        userId
-                    }
-                });
-                if(existingTag) return existingTag;
-                return await prisma.tags.create({
-                    data:{
-                        title:tagTitle,
-                        user:{
-                            connect:{
-                                    id:userId 
-                                }
-                        }
-                    }
-                });
-            })
-        );
-        const newContent = await prisma.content.create({
-            data:{
-                title,
-                type,
-                link,
-                user:{
-                    connect:{id:userId}},
-                
-                tags:{
-                    create:tagRecords.map((tag)=>({
-                    tag:{connect:{id:tag.id}}}))
-            }
-            },
-            include:{
-                tags: { include: { tag: true } },
-            }
-        });
     
-    return res.status(201).json({
-        message: "Content posted successfully",
-        data: newContent,
-    });
-    } catch (error: any) {
-        console.error(error);
-        return res.status(500).json({ message: "Server Error", error: error.message });
-    }
-
-}
-export const getContent = async(req:CustomRequest,res:Response)=>{
-    const userId = req.userId;
     if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
+        throw new AppError('Authentication required', 401);
+    }
+
+    // The request body has already been validated by the middleware
+    const { title, type, link, tags } = req.body;
+    
+    // Process tags
+    const tagRecords = await Promise.all(
+        tags.map(async (tagTitle: string) => {
+            const existingTag = await prisma.tags.findFirst({
+                where: {
+                    title: tagTitle,
+                    userId
+                }
+            });
+            
+            if (existingTag) return existingTag;
+            
+            return await prisma.tags.create({
+                data: {
+                    title: tagTitle,
+                    user: {
+                        connect: { id: userId }
+                    }
+                }
+            });
+        })
+    );
+    
+    // Create content
+    const newContent = await prisma.content.create({
+        data: {
+            title,
+            type,
+            link,
+            user: {
+                connect: { id: userId }
+            },
+            tags: {
+                create: tagRecords.map((tag) => ({
+                    tag: { connect: { id: tag.id } }
+                }))
+            }
+        },
+        include: {
+            tags: { include: { tag: true } },
+        }
+    });
+
+    res.status(201).json({
+        status: 'success',
+        message: 'Content created successfully',
+        data: newContent
+    });
+});
+
+// Get content controller
+export const getContent = catchAsync(async (req: CustomRequest, res: Response, next: NextFunction) => {
+    const userId = req.userId;
+    
+    if (!userId) {
+        throw new AppError('Authentication required', 401);
     }
     
+    // Fetch content
     const content = await prisma.content.findMany({
-        where: {
-            userId: userId
-        },
-        include:{
-            tags:{
-                include:{tag:true}
+        where: { userId },
+        include: {
+            tags: {
+                include: { tag: true }
             }
         },
         orderBy: {
@@ -87,6 +100,7 @@ export const getContent = async(req:CustomRequest,res:Response)=>{
         }
     });
     
+    // Format response
     const formatted = content.map((c) => ({
         id: c.id,
         title: c.title,
@@ -96,116 +110,150 @@ export const getContent = async(req:CustomRequest,res:Response)=>{
         createdAt: c.createdAt
     }));
     
-    return res.status(200).json({
-        message:"succesfully fetched the contents",
-        formatted
+    res.status(200).json({
+        status: 'success',
+        message: 'Content retrieved successfully',
+        data: formatted
     });
-}
-export const deleteContent = async(req:CustomRequest,res:Response)=>{
-    const contentId = parseInt(req.params.id);
-    if(isNaN(contentId)){
-        return res.status(400).json({message:"invalid id"});
-    }
-    try{
-        //delete the tags of content
-        await prisma.contentTags.deleteMany({
-            where:{contentId},
-        });
-        
-        //delete the contents
-        await prisma.content.delete({
-            where: { id: contentId },
-          });
-    }catch(error){
-        return res.status(500).json({message:"something is fishy"});
-    }
-}
-export const Sharebrain = async(req:CustomRequest,res:Response)=>{
-    try{
-    const share = req.body;
+});
+
+// Delete content controller
+export const deleteContent = catchAsync(async (req: CustomRequest, res: Response, next: NextFunction) => {
     const userId = req.userId;
-    if (!req.userId) {
-        return res.status(401).json({ message: 'Unauthorized: No userId' });
+    
+    if (!userId) {
+        throw new AppError('Authentication required', 401);
     }
+    
+    // Content ID has already been validated and parsed by the middleware
+    const contentId = req.params.id as unknown as number;
+    
+    // Verify ownership
+    const content = await prisma.content.findUnique({
+        where: { id: contentId }
+    });
+    
+    if (!content) {
+        throw new AppError('Content not found', 404);
+    }
+    
+    if (content.userId !== userId) {
+        throw new AppError('You are not authorized to delete this content', 403);
+    }
+
+    // Delete content tags
+    await prisma.contentTags.deleteMany({
+        where: { contentId },
+    });
+    
+    // Delete content
+    await prisma.content.delete({
+        where: { id: contentId },
+    });
+    
+    res.status(200).json({
+        status: 'success',
+        message: 'Content deleted successfully'
+    });
+});
+
+// Share brain controller
+export const Sharebrain = catchAsync(async (req: CustomRequest, res: Response, next: NextFunction) => {
+    const userId = req.userId;
+    
+    if (!userId) {
+        throw new AppError('Authentication required', 401);
+    }
+    
+    const share = req.body;
+    
     if (share && Object.keys(share).length > 0) {
-      // Check if a share link already exists for the user
-      const existingLink = await prisma.link.findUnique({
-        where: {
-          userId:req.userId,
-        },
-      });
+        // Check if share link already exists
+        const existingLink = await prisma.link.findUnique({
+            where: { userId },
+        });
 
-      if (existingLink) {
-        res.json({ hash: existingLink.hash });
-        return;
-      }
+        if (existingLink) {
+            return res.status(200).json({
+                status: 'success', 
+                hash: existingLink.hash 
+            });
+        }
 
-      // Create new hash and save it
-      const hash = random(10);
-      await prisma.link.create({
-        data: {
-            userId: req.userId,
-            hash,
-        },
-      });
+        // Create new hash and save it
+        const hash = random(10);
+        await prisma.link.create({
+            data: {
+                userId,
+                hash,
+            },
+        });
 
-      res.json({ hash });
+        res.status(200).json({
+            status: 'success',
+            hash
+        });
     } else {
-      await prisma.link.deleteMany({
-        where: {
-          userId: req.userId!,
-        },
-      });
+        // Remove existing share link
+        await prisma.link.deleteMany({
+            where: { userId },
+        });
 
-      res.json({ message: 'removed link' });
+        res.status(200).json({ 
+            status: 'success',
+            message: 'Share link removed'
+        });
     }
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ message: 'something went wrong' });
-  }
+});
 
-};
+// Get shared brain content
+export const getsharebrain = catchAsync(async (req: CustomRequest, res: Response, next: NextFunction) => {
+    // Hash has already been validated by the middleware
+    const { hash } = req.params;
 
-export const getsharebrain=async(req:CustomRequest,res:Response)=>{
-    try{
-        const { hash } = req.params;
-
-    // 1. Find link by hash
+    // Find link by hash
     const link = await prisma.link.findUnique({
-      where: { hash }
+        where: { hash }
     });
 
     if (!link) {
-      return res.status(404).json({
-        message: "Invalid share link"
-      });
+        throw new AppError('Invalid share link', 404);
     }
 
     const userId = link.userId;
 
-    // 2. Fetch content for the user
+    // Fetch content for the user
     const content = await prisma.content.findMany({
-      where: { userId }
+        where: { userId },
+        include: {
+            tags: {
+                include: { tag: true }
+            }
+        }
     });
 
-    // 3. Fetch user details
+    // Fetch user details
     const userRecord = await prisma.user.findUnique({
-      where: { id: userId }
+        where: { id: userId }
     });
 
     if (!userRecord) {
-      return res.status(404).json({ message: "User not found" });
+        throw new AppError('User not found', 404);
     }
 
-    // 4. Respond
-    return res.json({
-      username: userRecord.username,
-      content
+    // Format response
+    const formatted = content.map((c) => ({
+        id: c.id,
+        title: c.title,
+        type: c.type,
+        link: c.link,
+        tags: c.tags.map((t) => t.tag.title),
+        createdAt: c.createdAt
+    }));
+
+    res.status(200).json({
+        status: 'success',
+        username: userRecord.username,
+        data: formatted
     });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({
-      message: "something went wrong"
-    });
-  }
-}
+});
